@@ -91,7 +91,7 @@ var commands = [
             if (match && match[2]){
                 queue_playlist(match[2], message);
             } else {
-                add_to_queue(params[1], message);
+                add_to_queue(params[1], message, params[2]);
             }
         }
     },
@@ -352,7 +352,7 @@ bot.on("disconnect", event => {
 bot.on("message", message => {
 	if(message.channel.type === "dm" && message.author.id !== bot.user.id) { //Message received by DM
 		//Check that the DM was not send by the bot to prevent infinite looping
-		message.channel.sendMessage(dm_text);
+		message.channel.send(dm_text);
 	} else if(message.channel.type === "text" && message.channel.name === text_channel.name) { //Message received on desired text channel
 		if(message.isMentioned(bot.user)) {
 			message.reply(mention_text);
@@ -369,7 +369,7 @@ bot.on("message", message => {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-function add_to_queue(video, message, mute = false) {
+function add_to_queue(video, message, time = '0:0', mute = false) {
 
 	if(aliases.hasOwnProperty(video.toLowerCase())) {
 		video = aliases[video.toLowerCase()];
@@ -382,9 +382,9 @@ function add_to_queue(video, message, mute = false) {
 			message.reply("The requested video (" + video_id + ") does not exist or cannot be played.");
 			console.log("Error (" + video_id + "): " + error);
 		} else {
-			queue.push({title: info["title"], id: video_id, user: message.author.username});
+			queue.push({title: info["title"], id: video_id, user: message.author.username, time: time});
 			if (!mute) {
-				message.reply('"' + info["title"] + '" has been added to the queue.');
+				text_channel.send(':musical_keyboard: "' + info["title"] + '" agregado');
 			}
 			if(!stopped && !is_bot_playing() && queue.length === 1) {
 				play_next_song();
@@ -395,23 +395,36 @@ function add_to_queue(video, message, mute = false) {
 
 function play_next_song() {
 	if(is_queue_empty()) {
-		text_channel.sendMessage("The queue is empty!");
+		text_channel.send("The queue is empty!");
 	}
 
 	var video_id = queue[0]["id"];
 	var title = queue[0]["title"];
 	var user = queue[0]["user"];
 
+	if(queue[0]["time"]){
+		var time = queue[0]["time"];
+		console.log("TIME", time)
+	}
+
 	now_playing_data["title"] = title;
 	now_playing_data["user"] = user;
 
 	if(inform_np) {
-		text_channel.sendMessage('Now playing: "' + title + '" (requested by ' + user + ')');
+		text_channel.send(':microphone: "' + title + '" (by DJ ' + user + ')');
 		bot.user.setGame(title);
+	}
+	if(time){
+	var hms = time;  
+	var a = hms.split(':'); // split it at the colons
+
+	var seconds = a[0] * 60 + (+a[1]);
+	console.log(seconds)
 	}
 
 	var audio_stream = ytdl("https://www.youtube.com/watch?v=" + video_id);
-	voice_handler = voice_connection.playStream(audio_stream);
+
+	voice_handler = voice_connection.playStream(audio_stream, {seek: parseInt(seconds)});
 
 	voice_handler.once("end", reason => {
 		voice_handler = null;
@@ -455,7 +468,7 @@ function is_bot_playing() {
 	return voice_handler !== null;
 }
 
-function search_video(message, query) {
+function search_video(message, query, time) {
 	request("https://www.googleapis.com/youtube/v3/search?part=id&type=video&q=" + encodeURIComponent(query) + "&key=" + yt_api_key, (error, response, body) => {
 		var json = JSON.parse(body);
 		if("error" in json) {
@@ -463,7 +476,7 @@ function search_video(message, query) {
 		} else if(json.items.length === 0) {
 			message.reply("No videos found matching the search criteria.");
 		} else {
-			add_to_queue(json.items[0].id.videoId, message);
+			add_to_queue(json.items[0].id.videoId, message, time);
 		}
 	})
 }
